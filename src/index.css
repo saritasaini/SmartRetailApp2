@@ -1,28 +1,50 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Poppins:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Poppins', system-ui, sans-serif;
   
-  /* White & Red Theme Colors */
-  --color-bg-primary: #F9FAFB; /* Very light gray for contrast */
-  --color-bg-secondary: #FFFFFF; /* Pure white for cards */
-  --color-bg-tertiary: #F3F4F6; /* Borders and subtle backgrounds */
+  --color-cream-50: #FFFBF5;
+  --color-cream-100: #FFF5E6;
+  --color-cream-200: #FFE4CC;
+  --color-cream-300: #FFD4B3;
+  --color-cream-400: #FFC499;
+  --color-cream-500: #FFB380;
   
-  /* Mapping previous accent names to Red */
-  --color-brand-caramel: #DC2626; /* Primary Red */
-  --color-brand-caramel-dark: #B91C1C; /* Dark Red */
-  --color-brand-caramel-light: #EF4444; /* Light Red */
-  --color-brand-berry: #111827; /* Dark text/accents */
-  --color-brand-pistachio: #16A34A; /* Success Green */
-  --color-brand-honey: #D97706; /* Warning Orange */
+  --color-strawberry-50: #FFF0F3;
+  --color-strawberry-100: #FFD9E2;
+  --color-strawberry-400: #FF6B8A;
+  --color-strawberry-500: #FF4D6D;
+  --color-strawberry-600: #E83E5C;
   
-  --color-text-primary: #111827;
-  --color-text-secondary: #4B5563;
-  --color-text-muted: #9CA3AF;
+  --color-mint-50: #F0FFF9;
+  --color-mint-100: #CCFFEB;
+  --color-mint-400: #4ADE80;
+  --color-mint-500: #22C55E;
   
-  --color-border-light: #E5E7EB;
-  --color-border-focus: #DC2626;
+  --color-chocolate-400: #8B5E3C;
+  --color-chocolate-500: #6B4226;
+  --color-chocolate-600: #4A2E1A;
+
+  /* Backward compatibility for auth pages */
+  --color-bg-primary: #FFFBF5; 
+  --color-bg-secondary: #FFFFFF;
+  --color-bg-tertiary: #FFF5E6; 
+  
+  --color-brand-caramel: #FF4D6D; 
+  --color-brand-caramel-dark: #E83E5C; 
+  --color-brand-caramel-light: #FF6B8A; 
+  --color-brand-berry: #4A2E1A; 
+  --color-brand-pistachio: #22C55E; 
+  --color-brand-honey: #FFB380; 
+  
+  --color-text-primary: #1F2937; 
+  --color-text-secondary: #4B5563; 
+  --color-text-muted: #9CA3AF; 
+  
+  --color-border-light: #F3F4F6; 
+  --color-border-focus: #FF6B8A; 
 }
 
 @layer base {
@@ -31,37 +53,186 @@
   }
   
   body {
-    @apply bg-bg-primary text-text-primary font-sans antialiased overflow-x-hidden;
+    @apply bg-gradient-to-br from-cream-50 via-white to-cream-100 font-sans text-gray-800 min-h-screen overflow-x-hidden;
   }
 }
 
+* { scrollbar-width: thin; scrollbar-color: #E5E7EB transparent; }
+*::-webkit-scrollbar { width: 6px; }
+*::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 10px; }
+
 @layer utilities {
   .glass-card {
-    @apply bg-bg-secondary border border-border-light rounded-lg;
-    box-shadow: 0 2px 12px rgba(44, 24, 16, 0.06);
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.5);
   }
   
-  .glass-card-hover {
-    @apply transition-all duration-300 hover:-translate-y-1 hover:border-[#D4C4B0];
-    box-shadow: 0 8px 24px rgba(44, 24, 16, 0.1);
+  .sidebar-item {
+      position: relative;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
   
-  .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-brand-caramel to-brand-caramel-light;
+  .sidebar-item::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%) scaleY(0);
+      width: 4px;
+      height: 0;
+      background: linear-gradient(180deg, #FF6B8A, #FF4D6D);
+      border-radius: 0 4px 4px 0;
+      transition: all 0.3s ease;
   }
   
-  /* Custom Scrollbar for Creme Brulee theme */
-  ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+  .sidebar-item:hover::before,
+  .sidebar-item.active::before {
+      transform: translateY(-50%) scaleY(1);
+      height: 60%;
   }
-  ::-webkit-scrollbar-track {
-    @apply bg-bg-tertiary;
+  
+  .sidebar-item.active {
+      background: linear-gradient(90deg, rgba(255,107,138,0.1), transparent);
+      color: #E83E5C;
   }
-  ::-webkit-scrollbar-thumb {
-    @apply bg-border-light rounded-full;
+  
+  .stat-card {
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
   }
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-brand-caramel/50;
+  
+  .stat-card::after {
+      content: '';
+      position: absolute;
+      top: -50%;
+      right: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, transparent 70%);
+      opacity: 0;
+      transition: opacity 0.4s ease;
+  }
+  
+  .stat-card:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 20px 40px -10px rgba(0,0,0,0.1);
+  }
+  
+  .stat-card:hover::after {
+      opacity: 1;
+  }
+  
+  .stat-icon {
+      transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  
+  .stat-card:hover .stat-icon {
+      transform: scale(1.15) rotate(-5deg);
+  }
+  
+  .status-badge {
+      position: relative;
+      overflow: hidden;
+  }
+  
+  .status-badge::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+      animation: shimmer 3s infinite;
+  }
+  
+  @keyframes shimmer {
+      0% { left: -100%; }
+      50%, 100% { left: 100%; }
+  }
+  
+  .table-row {
+      transition: all 0.2s ease;
+  }
+  
+  .table-row:hover {
+      background: linear-gradient(90deg, rgba(255,107,138,0.03), rgba(255,107,138,0.06));
+      transform: scale(1.002);
+  }
+  
+  .fade-in {
+      animation: fadeIn 0.5s ease-out forwards;
+  }
+  
+  @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+  }
+  
+  .page-transition {
+      animation: pageSlide 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+  
+  @keyframes pageSlide {
+      from { opacity: 0; transform: translateX(20px); }
+      to { opacity: 1; transform: translateX(0); }
+  }
+  
+  .gradient-text {
+      background: linear-gradient(135deg, #FF6B8A, #8B5E3C);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+  }
+  
+  .floating-shape {
+      position: absolute;
+      border-radius: 50%;
+      opacity: 0.05;
+      animation: float 20s infinite ease-in-out;
+  }
+  
+  @keyframes float {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      33% { transform: translateY(-30px) rotate(120deg); }
+      66% { transform: translateY(15px) rotate(240deg); }
+  }
+  
+  .progress-ring {
+      transition: stroke-dashoffset 0.8s ease-in-out;
+  }
+  
+  .notification-dot {
+      animation: pulse 2s infinite;
+  }
+  
+  @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255, 77, 109, 0.7); }
+      50% { box-shadow: 0 0 0 8px rgba(255, 77, 109, 0); }
+  }
+  
+  .search-input:focus {
+      box-shadow: 0 0 0 3px rgba(255, 107, 138, 0.15);
+  }
+  
+  .btn-primary {
+      background: linear-gradient(135deg, #FF6B8A, #E83E5C);
+      transition: all 0.3s ease;
+  }
+  
+  .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px -5px rgba(232, 62, 92, 0.4);
+  }
+  
+  .revenue-up {
+      animation: countUp 1s ease-out forwards;
+  }
+  
+  @keyframes countUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
   }
 }
