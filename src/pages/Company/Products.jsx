@@ -445,10 +445,10 @@ export default function ProductManagement() {
 
       {/* Products Table (Compact Row Type) */}
       <GlassCard className="overflow-hidden p-0">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b border-border-light bg-bg-tertiary/30">
+        <div className="overflow-auto max-h-[70vh] custom-scrollbar">
+          <table className="w-full text-left border-collapse relative">
+            <thead className="sticky top-0 z-20 bg-bg-tertiary/95 backdrop-blur-sm shadow-sm">
+              <tr className="border-b border-border-light">
                 <th className="py-3 px-2 md:px-4 text-[10px] md:text-xs font-semibold text-text-secondary uppercase tracking-wider w-8 md:w-12 text-center md:text-left">S.No.</th>
                 <th className="py-3 px-2 md:px-4 text-[10px] md:text-xs font-semibold text-text-secondary uppercase tracking-wider w-12 md:w-16 text-center md:text-left">Image</th>
                 <th className="py-3 px-2 md:px-4 text-xs font-semibold text-text-secondary uppercase tracking-wider">Product Info</th>

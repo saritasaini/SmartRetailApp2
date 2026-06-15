@@ -1,14 +1,29 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/useAuthStore';
 import { motion, AnimatePresence } from 'framer-motion';
+import { supabase } from '../lib/supabase';
 
 export default function CompanyLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const signOut = useAuthStore(state => state.signOut);
   const profile = useAuthStore(state => state.profile);
+  const user = useAuthStore(state => state.user);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  
+  // Search State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState({ products: [], orders: [] });
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const searchInputRef = useRef(null);
+  const searchContainerRef = useRef(null);
+
+  // Notification State
+  const [notifications, setNotifications] = useState([]);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const notifContainerRef = useRef(null);
 
   useEffect(() => {
     document.title = profile?.shop_name || 'SmartRetails';
@@ -16,6 +31,113 @@ export default function CompanyLayout() {
       document.title = 'SmartRetails';
     };
   }, [profile?.shop_name]);
+
+  // Fetch Notifications (Low Stock & Pending Orders)
+  useEffect(() => {
+    if (!user) return;
+    const fetchNotifications = async () => {
+      try {
+        const [stockRes, orderRes] = await Promise.all([
+          supabase.from('products').select('id, name, stock_quantity').eq('company_id', user.id).lt('stock_quantity', 50),
+          supabase.from('orders').select('id, total_amount, created_at').eq('company_id', user.id).eq('status', 'pending')
+        ]);
+        
+        let notifs = [];
+        if (stockRes.data) {
+          stockRes.data.forEach(p => {
+            notifs.push({
+              id: `stock-${p.id}`,
+              type: 'stock',
+              title: 'Low Stock Alert',
+              message: `${p.name} only has ${p.stock_quantity} left.`,
+              link: '/company/products',
+              time: new Date()
+            });
+          });
+        }
+        if (orderRes.data) {
+          orderRes.data.forEach(o => {
+            notifs.push({
+              id: `order-${o.id}`,
+              type: 'order',
+              title: 'New Pending Order',
+              message: `Order #${o.id.substring(0,6)} for ₹${o.total_amount}`,
+              link: '/company/orders',
+              time: new Date(o.created_at)
+            });
+          });
+        }
+        notifs.sort((a, b) => b.time - a.time);
+        setNotifications(notifs);
+      } catch (error) {
+        console.error("Error fetching notifications:", error);
+      }
+    };
+    
+    fetchNotifications();
+  }, [user]);
+
+  // Ctrl+K Listener & Click Outside
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        setIsSearchOpen(true);
+      }
+      if (e.key === 'Escape') {
+        setIsSearchOpen(false);
+        setIsNotifOpen(false);
+      }
+    };
+
+    const handleClickOutside = (e) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target)) {
+        setIsSearchOpen(false);
+      }
+      if (notifContainerRef.current && !notifContainerRef.current.contains(e.target)) {
+        setIsNotifOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Search Logic (Debounced)
+  useEffect(() => {
+    if (!searchQuery.trim() || !user) {
+      setSearchResults({ products: [], orders: [] });
+      setIsSearching(false);
+      return;
+    }
+
+    const delayDebounceFn = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const q = `%${searchQuery}%`;
+        const [prodRes, ordRes] = await Promise.all([
+          supabase.from('products').select('id, name, price, image_url').eq('company_id', user.id).ilike('name', q).limit(5),
+          supabase.from('orders').select('id, total_amount, status').eq('company_id', user.id).ilike('id', q).limit(5)
+        ]);
+
+        setSearchResults({
+          products: prodRes.data || [],
+          orders: ordRes.data || []
+        });
+      } catch (error) {
+        console.error("Search error", error);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery, user]);
 
   const toggleSidebar = () => setSidebarOpen(!sidebarOpen);
 
@@ -36,6 +158,13 @@ export default function CompanyLayout() {
     { name: 'Logs', path: '/company/logs', icon: 'fa-file-alt', color: 'text-gray-500', bg: 'bg-gray-100' },
     { name: 'Settings', path: '/company/settings', icon: 'fa-cog', color: 'text-gray-500', bg: 'bg-gray-100' },
   ];
+
+  const navigateTo = (path) => {
+    navigate(path);
+    setIsSearchOpen(false);
+    setIsNotifOpen(false);
+    setSearchQuery('');
+  };
 
   return (
     <>
@@ -151,17 +280,145 @@ export default function CompanyLayout() {
               
               <div className="flex items-center gap-2 sm:gap-3">
                 {/* Search */}
-                <div className="hidden md:flex items-center bg-gray-50 rounded-xl px-4 py-2.5 border border-gray-100 focus-within:border-strawberry-300 focus-within:bg-white transition-all search-input">
-                  <i className="fas fa-search text-gray-400 mr-3"></i>
-                  <input type="text" placeholder="Search orders, products..." className="bg-transparent outline-none text-sm w-48 placeholder-gray-400" />
-                  <kbd className="ml-3 text-xs bg-white px-2 py-0.5 rounded border text-gray-400">Ctrl+K</kbd>
+                <div className="relative hidden md:block" ref={searchContainerRef}>
+                  <div className="flex items-center bg-gray-50 rounded-xl px-4 py-2.5 border border-gray-100 focus-within:border-strawberry-300 focus-within:bg-white transition-all search-input">
+                    <i className="fas fa-search text-gray-400 mr-3"></i>
+                    <input 
+                      ref={searchInputRef}
+                      type="text" 
+                      placeholder="Search orders, products..." 
+                      className="bg-transparent outline-none text-sm w-48 placeholder-gray-400" 
+                      value={searchQuery}
+                      onChange={(e) => { setSearchQuery(e.target.value); setIsSearchOpen(true); }}
+                      onFocus={() => setIsSearchOpen(true)}
+                    />
+                    <kbd className="ml-3 text-[10px] bg-white px-2 py-0.5 rounded border border-gray-200 text-gray-400 shadow-sm font-mono">Ctrl+K</kbd>
+                  </div>
+
+                  {/* Search Dropdown */}
+                  <AnimatePresence>
+                    {isSearchOpen && searchQuery.trim().length > 0 && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 10 }}
+                        className="absolute top-full right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden z-50"
+                      >
+                        <div className="max-h-96 overflow-y-auto custom-scrollbar py-2">
+                          {isSearching ? (
+                            <div className="p-4 text-center text-sm text-gray-400 flex items-center justify-center gap-2">
+                              <i className="fas fa-spinner fa-spin"></i> Searching...
+                            </div>
+                          ) : (
+                            <>
+                              {searchResults.products.length === 0 && searchResults.orders.length === 0 ? (
+                                <div className="p-4 text-center text-sm text-gray-400">No results found for "{searchQuery}"</div>
+                              ) : (
+                                <>
+                                  {searchResults.products.length > 0 && (
+                                    <div className="mb-2">
+                                      <p className="px-4 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50/50">Products</p>
+                                      {searchResults.products.map(p => (
+                                        <div key={p.id} onClick={() => navigateTo('/company/products')} className="flex items-center gap-3 px-4 py-2 hover:bg-strawberry-50 cursor-pointer transition-colors">
+                                          <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center overflow-hidden shrink-0 border border-gray-200">
+                                            {p.image_url ? <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" /> : <i className="fas fa-box text-gray-400 text-xs"></i>}
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-semibold text-gray-800 truncate">{p.name}</p>
+                                            <p className="text-xs text-strawberry-500 font-bold">₹{p.price}</p>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  {searchResults.orders.length > 0 && (
+                                    <div>
+                                      <p className="px-4 py-1 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50/50">Orders</p>
+                                      {searchResults.orders.map(o => (
+                                        <div key={o.id} onClick={() => navigateTo('/company/orders')} className="flex items-center gap-3 px-4 py-2 hover:bg-blue-50 cursor-pointer transition-colors">
+                                          <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                                            <i className="fas fa-shopping-bag text-blue-500 text-xs"></i>
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-semibold text-gray-800 truncate">#{o.id.substring(0,8)}</p>
+                                            <p className="text-xs text-gray-500 capitalize">{o.status}</p>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
                 
                 {/* Notifications */}
-                <button className="relative w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center text-gray-600 hover:bg-gray-100 transition-colors">
-                  <i className="fas fa-bell"></i>
-                  <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-strawberry-500 notification-dot"></span>
-                </button>
+                <div className="relative" ref={notifContainerRef}>
+                  <button 
+                    onClick={() => setIsNotifOpen(!isNotifOpen)}
+                    className="relative w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center text-gray-600 hover:bg-gray-100 transition-colors focus:ring-2 focus:ring-strawberry-300 outline-none"
+                  >
+                    <i className="fas fa-bell"></i>
+                    {notifications.length > 0 && (
+                      <span className="absolute top-2 right-2 w-2.5 h-2.5 rounded-full bg-strawberry-500 border-2 border-white notification-dot"></span>
+                    )}
+                  </button>
+
+                  <AnimatePresence>
+                    {isNotifOpen && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        className="absolute top-full right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden z-50 origin-top-right"
+                      >
+                        <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+                          <h3 className="font-bold text-gray-800">Notifications</h3>
+                          <span className="bg-strawberry-100 text-strawberry-600 text-xs font-bold px-2 py-0.5 rounded-full">
+                            {notifications.length} New
+                          </span>
+                        </div>
+                        
+                        <div className="max-h-80 overflow-y-auto custom-scrollbar">
+                          {notifications.length === 0 ? (
+                            <div className="p-8 text-center flex flex-col items-center justify-center">
+                              <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-3">
+                                <i className="fas fa-bell-slash text-gray-300 text-2xl"></i>
+                              </div>
+                              <p className="text-gray-500 font-medium text-sm">You're all caught up!</p>
+                              <p className="text-gray-400 text-xs mt-1">No new notifications right now.</p>
+                            </div>
+                          ) : (
+                            <div className="py-2">
+                              {notifications.map((notif) => (
+                                <div 
+                                  key={notif.id}
+                                  onClick={() => navigateTo(notif.link)}
+                                  className="px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors border-b border-gray-50 last:border-0 flex gap-3"
+                                >
+                                  <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${notif.type === 'stock' ? 'bg-orange-100 text-orange-500' : 'bg-blue-100 text-blue-500'}`}>
+                                    <i className={`fas ${notif.type === 'stock' ? 'fa-exclamation-triangle' : 'fa-shopping-bag'}`}></i>
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-semibold text-gray-800">{notif.title}</p>
+                                    <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{notif.message}</p>
+                                    <p className="text-[10px] text-gray-400 mt-1 font-medium">{notif.type === 'stock' ? 'Low Stock Alert' : 'Pending Action'}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               </div>
             </div>
           </header>
