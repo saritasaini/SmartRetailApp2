@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuthStore } from '../../store/useAuthStore';
 import GlassCard from '../../components/ui/GlassCard';
 import Button from '../../components/ui/Button';
-import { ShoppingBag, Search, Clock, ArrowRight, Wallet, ChevronRight } from 'lucide-react';
+import { ShoppingBag, Search, Clock, ArrowRight, Wallet, ChevronRight, MessageCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 
@@ -11,20 +11,22 @@ export default function CustomerDashboard() {
   const user = useAuthStore(state => state.user);
   const profile = useAuthStore(state => state.profile);
   const [recentOrders, setRecentOrders] = useState([]);
-  const [stats, setStats] = useState({ outstanding: 0, total: 0, pending: 0, delivered: 0 });
+  const [stats, setStats] = useState({ outstanding: 0, total: 0, pending: 0, delivered: 0, totalSpent: 0 });
   const [loading, setLoading] = useState(true);
   const [companyName, setCompanyName] = useState('Our Catalog');
+  const [companyPhone, setCompanyPhone] = useState(null);
 
   useEffect(() => {
     async function fetchCompanyName() {
       if (profile?.company_id) {
         const { data } = await supabase
           .from('profiles')
-          .select('shop_name')
+          .select('shop_name, phone')
           .eq('id', profile.company_id)
           .single();
         if (data?.shop_name) {
           setCompanyName(data.shop_name);
+          setCompanyPhone(data.phone);
         }
       }
     }
@@ -45,8 +47,8 @@ export default function CustomerDashboard() {
         if (orders) {
           setRecentOrders(orders.slice(0, 3));
           
-          const totalSpent = orders
-            .filter(o => o.status !== 'cancelled')
+          const totalBilledLedger = orders
+            .filter(o => o.payment_method === 'ledger' && o.status === 'delivered')
             .reduce((acc, curr) => acc + Number(curr.total_amount), 0);
             
           const pending = orders.filter(o => o.status === 'pending' || o.status === 'confirmed' || o.status === 'out_for_delivery').length;
@@ -54,14 +56,17 @@ export default function CustomerDashboard() {
 
           const { data: payments } = await supabase
             .from('payments')
-            .select('amount')
+            .select('amount, order_id, status')
             .eq('customer_id', user.id)
             .eq('status', 'verified');
             
-          const totalPaid = (payments || []).reduce((acc, curr) => acc + Number(curr.amount), 0);
+          const totalPaidLedger = (payments || [])
+            .filter(p => p.order_id === null)
+            .reduce((acc, curr) => acc + Number(curr.amount), 0);
           
           setStats({
-            outstanding: totalSpent - totalPaid,
+            outstanding: totalBilledLedger - totalPaidLedger,
+            totalSpent: totalBilledLedger,
             total: orders.length,
             pending: pending,
             delivered: delivered
@@ -93,11 +98,13 @@ export default function CustomerDashboard() {
                 Your wholesale portal for premium ice cream products. Restock your inventory instantly and track your ledger seamlessly.
               </p>
             </div>
-            <Link to="/customer/catalog">
-              <Button className="whitespace-nowrap px-6 py-3 shadow-[0_0_20px_rgba(220,38,38,0.3)] hover:shadow-[0_0_25px_rgba(220,38,38,0.5)] transition-all">
-                Browse Catalog <ArrowRight size={16} className="ml-2" />
-              </Button>
-            </Link>
+            <div className="mt-4 md:mt-0 relative z-10">
+              <Link to="/customer/catalog">
+                <Button className="whitespace-nowrap px-6 py-3 shadow-[0_0_20px_rgba(220,38,38,0.3)] hover:shadow-[0_0_25px_rgba(220,38,38,0.5)] transition-all">
+                  Browse Catalog <ArrowRight size={16} className="ml-2" />
+                </Button>
+              </Link>
+            </div>
           </div>
           {/* Decorative elements */}
           <div className="absolute -top-32 -right-32 w-96 h-96 bg-brand-caramel/20 rounded-full blur-[80px] pointer-events-none"></div>
@@ -121,6 +128,7 @@ export default function CustomerDashboard() {
               <p className="text-3xl font-black text-text-primary mb-4">
                 {loading ? '...' : `₹${stats.outstanding.toLocaleString()}`}
               </p>
+              
               <Link to="/customer/payments">
                 <Button variant="outline" className="w-full text-xs py-2 border-border-light hover:border-brand-caramel hover:text-brand-caramel">
                   View Ledger & Pay
@@ -230,6 +238,22 @@ export default function CustomerDashboard() {
         </div>
 
       </div>
+
+      {/* WhatsApp Floating Action Button */}
+      {companyPhone && (
+        <a 
+          href={`https://wa.me/91${companyPhone.replace(/\\D/g, '')}`} 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="fixed bottom-6 right-6 z-50 bg-green-500 text-white p-4 rounded-full shadow-[0_10px_25px_rgba(34,197,94,0.4)] hover:shadow-[0_15px_30px_rgba(34,197,94,0.5)] hover:-translate-y-1 transition-all duration-300 flex items-center justify-center group"
+          title="Chat with Support"
+        >
+          <MessageCircle size={28} />
+          <span className="max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 ease-in-out whitespace-nowrap pl-0 group-hover:pl-2 font-bold">
+            Chat with us
+          </span>
+        </a>
+      )}
     </div>
   );
 }

@@ -95,3 +95,58 @@ CREATE TRIGGER trigger_restock_on_cancel
 AFTER UPDATE ON public.orders
 FOR EACH ROW
 EXECUTE FUNCTION restock_on_cancel();
+
+
+-- Create automatic payment for COD orders when delivered
+CREATE OR REPLACE FUNCTION create_payment_on_cod_delivery()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.status = 'delivered' AND OLD.status != 'delivered' AND NEW.payment_method = 'cod' THEN
+    INSERT INTO public.payments (company_id, customer_id, amount, payment_method, status, notes)
+    VALUES (NEW.company_id, NEW.customer_id, NEW.total_amount, 'cash', 'verified', 'Auto-generated for Order ' || left(NEW.id::text, 8));
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trigger_payment_on_delivery ON public.orders;
+
+CREATE TRIGGER trigger_payment_on_delivery
+AFTER UPDATE ON public.orders
+FOR EACH ROW
+EXECUTE FUNCTION create_payment_on_cod_delivery();
+
+
+-- Add order_id to payments
+ALTER TABLE public.payments ADD COLUMN IF NOT EXISTS order_id UUID REFERENCES public.orders(id) ON DELETE SET NULL;
+
+-- Update COD Trigger to link order_id
+CREATE OR REPLACE FUNCTION create_payment_on_cod_delivery()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.status = 'delivered' AND OLD.status != 'delivered' AND NEW.payment_method = 'cod' THEN
+    INSERT INTO public.payments (company_id, customer_id, amount, payment_method, status, notes, order_id)
+    VALUES (NEW.company_id, NEW.customer_id, NEW.total_amount, 'cash', 'verified', 'Auto-generated for Order ' || left(NEW.id::text, 8), NEW.id);
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Reject pending UPI payments if order is cancelled
+CREATE OR REPLACE FUNCTION reject_payment_on_order_cancel()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.status = 'cancelled' AND OLD.status != 'cancelled' THEN
+    UPDATE public.payments 
+    SET status = 'rejected', notes = notes || ' (Order Cancelled)' 
+    WHERE order_id = NEW.id AND status = 'pending';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trigger_reject_payment ON public.orders;
+CREATE TRIGGER trigger_reject_payment
+AFTER UPDATE ON public.orders
+FOR EACH ROW
+EXECUTE FUNCTION reject_payment_on_order_cancel();

@@ -169,7 +169,7 @@ export default function MyOrders() {
                     order.payment_method === 'upi' ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' :
                     'bg-text-secondary/10 text-text-secondary border-border-light'
                   }`}>
-                    {order.payment_method === 'cod' ? 'COD' : order.payment_method === 'upi' ? 'UPI' : 'Khata'}
+                    {order.payment_method === 'cod' ? 'COD' : order.payment_method === 'upi' ? 'UPI' : 'Pay Later'}
                   </span>
                 </div>
               </div>

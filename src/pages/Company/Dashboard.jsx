@@ -28,7 +28,7 @@ export default function CompanyDashboard() {
         .from('orders')
         .select(`
           *,
-          profiles (shop_name)
+          profiles:customer_id (shop_name)
         `)
         .eq('company_id', user.id)
         .order('created_at', { ascending: false });

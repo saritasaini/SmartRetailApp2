@@ -11,10 +11,12 @@ export default function PaymentManagement() {
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('pending'); // default to pending to process them
+  const [methodFilter, setMethodFilter] = useState('all');
+  const [upiStatusFilter, setUpiStatusFilter] = useState('all');
   
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
   const [newPayment, setNewPayment] = useState({
     customer_id: '',
     amount: '',
@@ -52,13 +54,13 @@ export default function PaymentManagement() {
       // Fetch Orders for balance calculation
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
-        .select('customer_id, total_amount, status')
+        .select('customer_id, total_amount, status, payment_method')
         .eq('company_id', user.id)
         .neq('status', 'cancelled');
         
       if (ordersError) throw ordersError;
 
-      // Calculate balances
+      // Calculate balances (ONLY for Pay Later)
       const balances = {};
       if (customersData) {
         customersData.forEach(c => balances[c.id] = 0);
@@ -66,7 +68,7 @@ export default function PaymentManagement() {
       
       if (ordersData) {
         ordersData.forEach(o => {
-          if (balances[o.customer_id] !== undefined) {
+          if (o.payment_method === 'ledger' && o.status === 'delivered' && balances[o.customer_id] !== undefined) {
              balances[o.customer_id] += Number(o.total_amount);
           }
         });
@@ -74,7 +76,8 @@ export default function PaymentManagement() {
 
       if (paymentsData) {
         paymentsData.forEach(p => {
-          if (p.status === 'verified') {
+          // Only subtract manual payments (order_id is null) from the Pay Later dues
+          if (p.status === 'verified' && p.order_id === null) {
             if (balances[p.customer_id] !== undefined) {
               balances[p.customer_id] -= Number(p.amount);
             }
@@ -127,6 +130,7 @@ export default function PaymentManagement() {
     const user = useAuthStore.getState().user;
     
     setIsSubmitting(true);
+    setErrorMsg('');
     try {
       const { error } = await supabase
         .from('payments')
@@ -135,7 +139,6 @@ export default function PaymentManagement() {
           customer_id: newPayment.customer_id,
           amount: Number(newPayment.amount),
           payment_method: newPayment.payment_method,
-          reference_id: newPayment.reference_id,
           notes: newPayment.notes || 'Manually logged by Admin',
           status: 'verified' // Auto-verify admin added payments
         });
@@ -147,7 +150,7 @@ export default function PaymentManagement() {
       fetchPaymentsAndCustomers();
     } catch (error) {
       console.error('Error logging payment:', error);
-      alert('Failed to log payment.');
+      setErrorMsg(error.message || 'Failed to log payment. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -156,11 +159,21 @@ export default function PaymentManagement() {
   const filteredPayments = payments.filter(p => {
     const matchesSearch = 
       p.profiles?.shop_name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      p.profiles?.owner_name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
       p.reference_id?.toLowerCase().includes(searchTerm.toLowerCase());
       
-    const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
+    let matchesMethod = false;
+    if (methodFilter === 'all') matchesMethod = true;
+    else if (methodFilter === 'pay_later') matchesMethod = (p.order_id === null); // Manual payments
+    else if (methodFilter === 'cod') matchesMethod = (p.order_id !== null && p.payment_method === 'cash');
+    else if (methodFilter === 'upi') matchesMethod = (p.payment_method === 'upi');
+
+    let matchesUpiStatus = true;
+    if (methodFilter === 'upi' && upiStatusFilter !== 'all') {
+       matchesUpiStatus = (p.status === upiStatusFilter);
+    }
     
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesMethod && matchesUpiStatus;
   });
 
   return (
@@ -174,38 +187,64 @@ export default function PaymentManagement() {
           onClick={() => setIsAddModalOpen(true)}
           className="flex items-center gap-2 px-4 py-2"
         >
-          <Plus size={18} /> Log Received Payment
+          <Plus size={18} /> Add Payment
         </Button>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-4 mb-4 justify-between md:items-center">
-        {/* Status Tabs */}
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide -mx-4 px-4 md:mx-0 md:px-0 items-center">
-          {['pending', 'verified', 'rejected', 'all'].map(status => (
+      <div className="flex flex-col lg:flex-row gap-4 mb-4 justify-between lg:items-center">
+        {/* Method Tabs */}
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide -mx-4 px-4 lg:mx-0 lg:px-0 items-center shrink-0">
+          {[
+            { id: 'all', label: 'All' },
+            { id: 'pay_later', label: 'Pay Later' },
+            { id: 'cod', label: 'Cash on Delivery' },
+            { id: 'upi', label: 'UPI Pay' }
+          ].map(tab => (
             <button
-              key={status}
-              onClick={() => setStatusFilter(status)}
+              key={tab.id}
+              onClick={() => { setMethodFilter(tab.id); setUpiStatusFilter('all'); }}
               className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap border ${
-                statusFilter === status 
+                methodFilter === tab.id 
                   ? 'bg-brand-caramel/10 border-brand-caramel/30 text-brand-caramel shadow-sm' 
                   : 'bg-bg-secondary border-border-light/50 text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'
               }`}
             >
-              {status.charAt(0).toUpperCase() + status.slice(1)} {status === 'pending' && payments.filter(p => p.status === 'pending').length > 0 && `(${payments.filter(p => p.status === 'pending').length})`}
+              {tab.label}
+              {tab.id === 'upi' && payments.filter(p => p.payment_method === 'upi' && p.status === 'pending').length > 0 && ` (${payments.filter(p => p.payment_method === 'upi' && p.status === 'pending').length})`}
             </button>
           ))}
         </div>
 
-        <GlassCard className="flex flex-1 items-center gap-2 px-4 py-2.5 w-full ml-auto md:max-w-xs">
-          <Search className="text-text-secondary shrink-0" size={18} />
-          <input 
-            type="text" 
-            placeholder="Search Shop or UTR..." 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="bg-transparent border-none text-text-primary focus:outline-none w-full text-sm"
-          />
-        </GlassCard>
+        <div className="flex flex-col sm:flex-row gap-3 items-center w-full lg:w-auto ml-auto">
+          {methodFilter === 'upi' && (
+            <div className="flex bg-bg-secondary border border-border-light p-1 rounded-lg w-full sm:w-auto overflow-x-auto scrollbar-hide shrink-0 shadow-sm">
+              {['all', 'pending', 'verified', 'rejected'].map(status => (
+                <button
+                  key={status}
+                  onClick={() => setUpiStatusFilter(status)}
+                  className={`flex-1 sm:flex-none px-3 py-1.5 text-xs font-bold rounded-md transition-all whitespace-nowrap ${
+                    upiStatusFilter === status 
+                      ? 'bg-brand-caramel text-white shadow-md' 
+                      : 'text-text-secondary hover:text-text-primary hover:bg-bg-primary'
+                  }`}
+                >
+                  {status === 'verified' ? 'Verified' : status.charAt(0).toUpperCase() + status.slice(1)}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <GlassCard className="flex items-center gap-2 px-4 py-2.5 w-full sm:w-64 shrink-0">
+            <Search className="text-text-secondary shrink-0" size={18} />
+            <input 
+              type="text" 
+              placeholder="Search Shop or UTR..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="bg-transparent border-none text-text-primary focus:outline-none w-full text-sm"
+            />
+          </GlassCard>
+        </div>
       </div>
 
       <GlassCard className="overflow-hidden p-0">
@@ -213,12 +252,12 @@ export default function PaymentManagement() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-border-light bg-bg-tertiary/50">
+                <th className="py-3 px-4 text-xs font-semibold text-text-secondary uppercase w-16">S.No</th>
                 <th className="py-3 px-4 text-xs font-semibold text-text-secondary uppercase">Date & Time</th>
                 <th className="py-3 px-4 text-xs font-semibold text-text-secondary uppercase">Shop Details</th>
                 <th className="py-3 px-4 text-xs font-semibold text-text-secondary uppercase">Amount</th>
                 <th className="py-3 px-4 text-xs font-semibold text-text-secondary uppercase">Method & Ref</th>
                 <th className="py-3 px-4 text-xs font-semibold text-text-secondary uppercase">Status</th>
-                <th className="py-3 px-4 text-xs font-semibold text-text-secondary uppercase text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -231,14 +270,17 @@ export default function PaymentManagement() {
                 </tr>
               ) : filteredPayments.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="text-center py-12 text-text-secondary">
+                  <td colSpan="7" className="text-center py-12 text-text-secondary">
                     <IndianRupee className="mx-auto text-text-muted mb-2 opacity-50" size={32} />
                     No payments found matching criteria.
                   </td>
                 </tr>
               ) : (
-                filteredPayments.map((payment) => (
+                filteredPayments.map((payment, index) => (
                   <tr key={payment.id} className="border-b border-border-light/50 hover:bg-bg-primary/5 transition-colors">
+                    <td className="py-3 px-4 text-sm font-bold text-text-secondary">
+                      {index + 1}
+                    </td>
                     <td className="py-3 px-4 whitespace-nowrap">
                       <p className="text-sm text-text-primary font-medium">{new Date(payment.created_at).toLocaleDateString()}</p>
                       <p className="text-xs text-text-secondary">{new Date(payment.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
@@ -251,9 +293,24 @@ export default function PaymentManagement() {
                       <p className="text-base font-bold text-brand-caramel">₹{payment.amount}</p>
                     </td>
                     <td className="py-3 px-4">
-                      <p className="text-xs font-semibold text-text-secondary uppercase tracking-wider">{payment.payment_method.replace('_', ' ')}</p>
-                      <p className="text-sm text-text-primary font-mono">{payment.reference_id || 'No Ref'}</p>
-                      {payment.notes && <p className="text-[10px] text-text-secondary truncate max-w-[150px] mt-0.5">{payment.notes}</p>}
+                      <div className="flex flex-col gap-0.5">
+                        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-bg-secondary w-max border border-border-light text-xs font-bold text-text-primary uppercase tracking-wider shadow-sm">
+                          {payment.payment_method === 'cash' ? '💵 ' : '🏦 '}
+                          {payment.payment_method.replace('_', ' ')}
+                        </span>
+                        
+                        {payment.payment_method !== 'cash' && (
+                          <p className="text-sm text-text-secondary font-mono mt-1">
+                            Ref: <span className="text-text-primary font-medium">{payment.notes?.startsWith('Ref: ') ? payment.notes.split(' - ')[0].replace('Ref: ', '') : 'N/A'}</span>
+                          </p>
+                        )}
+                        
+                        {payment.notes && !payment.notes.startsWith('Auto-generated') && !payment.notes.startsWith('Ref: ') && (
+                          <p className="text-[11px] text-text-secondary mt-1 bg-bg-tertiary px-2 py-1 rounded border border-border-light/50 w-max max-w-[180px] line-clamp-2" title={payment.notes}>
+                            📝 {payment.notes}
+                          </p>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3 px-4 whitespace-nowrap">
                       {payment.status === 'verified' ? (
@@ -268,26 +325,6 @@ export default function PaymentManagement() {
                         <span className="inline-flex items-center gap-1 text-xs font-bold text-brand-honey px-2 py-1 bg-brand-honey/10 rounded-md">
                           <Clock size={12} /> Pending
                         </span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 whitespace-nowrap text-right">
-                      {payment.status === 'pending' && (
-                        <div className="flex items-center justify-end gap-2">
-                          <button 
-                            onClick={() => updatePaymentStatus(payment.id, 'verified')}
-                            className="p-1.5 rounded bg-brand-pistachio/10 text-brand-pistachio hover:bg-brand-pistachio hover:text-white transition-colors"
-                            title="Verify & Accept"
-                          >
-                            <CheckCircle size={18} />
-                          </button>
-                          <button 
-                            onClick={() => updatePaymentStatus(payment.id, 'rejected')}
-                            className="p-1.5 rounded bg-brand-berry/10 text-brand-berry hover:bg-brand-berry hover:text-white transition-colors"
-                            title="Reject"
-                          >
-                            <XCircle size={18} />
-                          </button>
-                        </div>
                       )}
                     </td>
                   </tr>
@@ -307,8 +344,15 @@ export default function PaymentManagement() {
             className="bg-bg-secondary border border-border-light rounded-xl p-6 w-full max-w-md shadow-2xl"
           >
             <h2 className="text-xl font-bold text-text-primary mb-4 flex items-center gap-2">
-              <IndianRupee className="text-brand-caramel" /> Log Received Payment
+              <IndianRupee className="text-brand-caramel" /> Add Payment
             </h2>
+
+            {errorMsg && (
+              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 text-sm">
+                {errorMsg}
+              </div>
+            )}
+
             <form onSubmit={handleManualPayment} className="space-y-4">
               
               <div>
@@ -404,7 +448,7 @@ export default function PaymentManagement() {
                   className="flex-1"
                   disabled={isSubmitting}
                 >
-                  {isSubmitting ? 'Saving...' : 'Log & Verify Payment'}
+                  {isSubmitting ? 'Saving...' : 'Save Payment'}
                 </Button>
               </div>
             </form>

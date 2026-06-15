@@ -15,10 +15,16 @@ export default function CartPage() {
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [error, setError] = useState('');
   const [paymentMode, setPaymentMode] = useState('ledger');
+  const [upiRef, setUpiRef] = useState('');
 
   const handlePlaceOrder = async () => {
     if (items.length === 0 || !user) return;
     
+    if (paymentMode === 'upi' && !upiRef.trim()) {
+      setError('Please enter your UPI Transaction ID (UTR)');
+      return;
+    }
+
     setPlacingOrder(true);
     setError('');
     
@@ -55,6 +61,22 @@ export default function CartPage() {
         // Rollback: delete the orphaned order record
         await supabase.from('orders').delete().eq('id', orderData.id);
         throw itemsError;
+      }
+
+      // 3. Create UPI payment record if applicable
+      if (paymentMode === 'upi') {
+        const { error: paymentError } = await supabase.from('payments').insert({
+          company_id: profile?.company_id,
+          customer_id: user.id,
+          amount: totalAmount,
+          payment_method: 'upi',
+          status: 'pending',
+          notes: `Ref: ${upiRef.trim()} - For Order #${orderData.id.slice(0, 8).toUpperCase()}`,
+          order_id: orderData.id
+        });
+        if (paymentError) {
+          console.error("Warning: Failed to create payment record for UPI", paymentError);
+        }
       }
 
       // Success
@@ -212,7 +234,7 @@ export default function CartPage() {
                           {paymentMode === 'ledger' && <div className="w-2 h-2 rounded-full bg-white animate-in zoom-in duration-200"></div>}
                         </div>
                         <div>
-                          <span className={`block text-sm font-bold ${paymentMode === 'ledger' ? 'text-brand-caramel' : 'text-text-primary'}`}>Pay Later (Khata)</span>
+                          <span className={`block text-sm font-bold ${paymentMode === 'ledger' ? 'text-brand-caramel' : 'text-text-primary'}`}>Pay Later</span>
                           <span className="block text-[10px] text-text-secondary mt-0.5">Add this order to your pending dues</span>
                         </div>
                       </div>
@@ -258,6 +280,18 @@ export default function CartPage() {
                       <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                       <span>Please pay admin directly via UPI. Share the screenshot with them to verify.</span>
                     </p>
+                    <div className="mt-3">
+                      <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-1">
+                        UPI Transaction ID (UTR) <span className="text-brand-berry">*</span>
+                      </label>
+                      <input 
+                        type="text" 
+                        value={upiRef}
+                        onChange={(e) => setUpiRef(e.target.value)}
+                        placeholder="Enter 12-digit UTR number" 
+                        className="w-full bg-bg-primary border border-blue-500/30 rounded-lg px-3 py-2 text-text-primary focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-sm"
+                      />
+                    </div>
                   </div>
                 )}
               </div>

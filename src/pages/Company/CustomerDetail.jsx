@@ -5,7 +5,7 @@ import GlassCard from '../../components/ui/GlassCard';
 import Button from '../../components/ui/Button';
 import { 
   ArrowLeft, Store, Users, Phone, MapPin, 
-  ShoppingCart, TrendingUp, Package, XCircle 
+  ShoppingCart, TrendingUp, Package, XCircle, Mail, MessageCircle 
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -66,26 +66,28 @@ export default function CustomerDetail() {
         setPayments(paymentsData || []);
         
         // Calculate Stats
-        const totalSpent = ordersData
-          .filter(o => o.status !== 'cancelled')
+        // ONLY Ledger (Pay Later) orders that are DELIVERED are added to the Due amount
+        const totalBilledLedger = ordersData
+          .filter(o => o.payment_method === 'ledger' && o.status === 'delivered')
           .reduce((acc, curr) => acc + Number(curr.total_amount), 0);
           
-        const totalPaid = paymentsData
-          ?.filter(p => p.status === 'verified')
+        // ONLY manual payments (order_id is null) are subtracted from the Ledger Due
+        const totalPaidLedger = paymentsData
+          ?.filter(p => p.status === 'verified' && p.order_id === null)
           .reduce((acc, curr) => acc + Number(curr.amount), 0) || 0;
 
         const pending = ordersData.filter(o => o.status === 'pending' || o.status === 'confirmed').length;
         
         setStats({
           totalOrders: ordersData.length,
-          totalSpent: totalSpent,
-          outstanding: totalSpent - totalPaid,
+          totalSpent: totalBilledLedger,
+          outstanding: totalBilledLedger - totalPaidLedger,
           pendingOrders: pending
         });
       }
     } catch (error) {
       console.error('Error fetching customer details:', error);
-      alert('Failed to load customer details.');
+      // Removed alert, we could set an error state here
     } finally {
       setLoading(false);
     }
@@ -139,19 +141,20 @@ export default function CustomerDetail() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
+      {/* Combined Header & Profile Details */}
+      <GlassCard className="flex flex-col lg:flex-row gap-6 items-start lg:items-center justify-between p-6">
+        <div className="flex items-start gap-5">
           <button 
             onClick={() => navigate('/company/customers')}
-            className="p-2 rounded-lg bg-bg-secondary border border-border-light text-text-secondary hover:text-brand-caramel hover:border-brand-caramel transition-colors"
+            className="mt-1 p-2 rounded-xl bg-bg-secondary border border-border-light text-text-secondary hover:text-brand-caramel hover:border-brand-caramel transition-all shrink-0 shadow-sm"
           >
             <ArrowLeft size={20} />
           </button>
+          
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-text-primary flex items-center gap-3">
+            <h1 className="text-2xl md:text-3xl font-black text-text-primary flex flex-wrap items-center gap-3 mb-2">
               {customer.shop_name}
-              <span className={`px-2.5 py-0.5 rounded-md text-xs font-medium border ${
+              <span className={`px-2.5 py-1 rounded-md text-[10px] uppercase tracking-wider font-bold border ${
                 customer.is_approved 
                   ? 'bg-brand-pistachio/10 text-brand-pistachio border-brand-pistachio/20' 
                   : 'bg-brand-honey/10 text-brand-honey border-yellow-500/20'
@@ -159,38 +162,41 @@ export default function CustomerDetail() {
                 {customer.is_approved ? 'Approved' : 'Pending'}
               </span>
             </h1>
-            <p className="text-text-secondary text-sm mt-1">Customer Dashboard & Order History</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Profile Details */}
-      <GlassCard className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-brand-caramel/10 text-brand-caramel rounded-lg">
-            <Users size={20} />
-          </div>
-          <div>
-            <p className="text-xs text-text-secondary uppercase tracking-wider font-semibold">Owner Name</p>
-            <p className="text-sm font-medium text-text-primary">{customer.owner_name}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-brand-caramel/10 text-brand-caramel rounded-lg">
-            <Phone size={20} />
-          </div>
-          <div>
-            <p className="text-xs text-text-secondary uppercase tracking-wider font-semibold">Phone Number</p>
-            <p className="text-sm font-medium text-text-primary">{customer.phone || 'N/A'}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-brand-caramel/10 text-brand-caramel rounded-lg">
-            <MapPin size={20} />
-          </div>
-          <div>
-            <p className="text-xs text-text-secondary uppercase tracking-wider font-semibold">Address</p>
-            <p className="text-sm font-medium text-text-primary line-clamp-2">{customer.address || 'N/A'}</p>
+            
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-3 mt-3 text-sm text-text-primary font-medium">
+               <span className="flex items-center gap-2 bg-bg-secondary px-3 py-1.5 rounded-lg border border-border-light shadow-sm">
+                 <Users size={16} className="text-brand-caramel"/> 
+                 {customer.owner_name}
+               </span>
+               <span className="flex items-center gap-2 bg-bg-secondary px-3 py-1.5 rounded-lg border border-border-light shadow-sm">
+                 <Phone size={16} className="text-brand-pistachio"/> 
+                 {customer.phone ? (
+                   <a href={`tel:${customer.phone}`} className="hover:text-brand-pistachio hover:underline transition-colors">
+                     {customer.phone}
+                   </a>
+                 ) : 'N/A'}
+               </span>
+               {customer.email && (
+                 <span className="flex items-center gap-2 bg-bg-secondary px-3 py-1.5 rounded-lg border border-border-light shadow-sm">
+                   <Mail size={16} className="text-blue-500"/> 
+                   <a href={`mailto:${customer.email}`} className="hover:text-blue-500 hover:underline transition-colors">
+                     {customer.email}
+                   </a>
+                 </span>
+               )}
+               {customer.phone && (
+                 <span className="flex items-center gap-2 bg-bg-secondary px-3 py-1.5 rounded-lg border border-border-light shadow-sm">
+                   <MessageCircle size={16} className="text-green-500"/> 
+                   <a href={`https://wa.me/91${customer.phone.replace(/\\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="hover:text-green-500 hover:underline transition-colors">
+                     WhatsApp
+                   </a>
+                 </span>
+               )}
+               <span className="flex items-center gap-2 bg-bg-secondary px-3 py-1.5 rounded-lg border border-border-light shadow-sm">
+                 <MapPin size={16} className="text-brand-berry"/> 
+                 <span className="line-clamp-1 max-w-[200px]">{customer.address || 'N/A'}</span>
+               </span>
+            </div>
           </div>
         </div>
       </GlassCard>
@@ -221,6 +227,37 @@ export default function CustomerDetail() {
           );
         })}
       </div>
+
+      {/* Payment Health Progress */}
+      {stats.totalSpent > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+        >
+          <GlassCard className="p-6 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-brand-pistachio/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
+            <div className="flex justify-between items-end mb-2 relative z-10">
+              <div>
+                <p className="text-sm font-bold text-text-secondary uppercase tracking-wider mb-1">Payment Recovery Health</p>
+                <h3 className="text-2xl md:text-3xl font-black text-text-primary">
+                  {Math.round(((stats.totalSpent - stats.outstanding) / stats.totalSpent) * 100)}% <span className="text-lg text-brand-pistachio font-bold">Recovered</span>
+                </h3>
+              </div>
+              <div className="text-right">
+                <p className="text-xs font-semibold text-text-secondary">Total Billed: <span className="text-text-primary">₹{stats.totalSpent.toLocaleString()}</span></p>
+                <p className="text-xs font-bold text-brand-berry mt-1">Total Due: ₹{stats.outstanding.toLocaleString()}</p>
+              </div>
+            </div>
+            <div className="w-full bg-bg-primary rounded-full h-4 mt-5 overflow-hidden border border-border-light relative z-10 p-0.5">
+              <div 
+                className="bg-gradient-to-r from-brand-pistachio/60 to-brand-pistachio h-full rounded-full transition-all duration-1000 ease-out shadow-sm" 
+                style={{ width: `${Math.max(0, Math.min(100, ((stats.totalSpent - stats.outstanding) / stats.totalSpent) * 100))}%` }}
+              ></div>
+            </div>
+          </GlassCard>
+        </motion.div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-4 border-b border-border-light pb-2">
@@ -292,13 +329,14 @@ export default function CustomerDetail() {
                     <th className="py-3 px-4 text-sm font-semibold text-text-secondary whitespace-nowrap">Order ID</th>
                     <th className="py-3 px-4 text-sm font-semibold text-text-secondary whitespace-nowrap">Date & Time</th>
                     <th className="py-3 px-4 text-sm font-semibold text-text-secondary whitespace-nowrap">Amount</th>
+                    <th className="py-3 px-4 text-sm font-semibold text-text-secondary whitespace-nowrap">Pay Mode</th>
                     <th className="py-3 px-4 text-sm font-semibold text-text-secondary whitespace-nowrap">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredOrders.length === 0 ? (
                     <tr>
-                      <td colSpan="5" className="text-center py-8 text-text-secondary">
+                      <td colSpan="6" className="text-center py-8 text-text-secondary">
                         No orders found matching the selected filters.
                       </td>
                     </tr>
@@ -314,6 +352,19 @@ export default function CustomerDetail() {
                         </td>
                         <td className="py-3 px-4 text-sm font-bold text-text-primary whitespace-nowrap">
                           ₹{order.total_amount}
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${
+                              order.payment_method === 'cod' ? 'bg-brand-pistachio' :
+                              order.payment_method === 'upi' ? 'bg-blue-500' :
+                              'bg-brand-caramel'
+                            }`}></div>
+                            <span className="text-sm font-medium text-text-secondary">
+                              {order.payment_method === 'ledger' ? 'Pay Later' : 
+                               order.payment_method === 'cod' ? 'Cash on Delivery' : 'UPI Payment'}
+                            </span>
+                          </div>
                         </td>
                         <td className="py-3 px-4 text-sm whitespace-nowrap">
                           <span className={`px-2.5 py-1 rounded-md text-xs font-bold border ${

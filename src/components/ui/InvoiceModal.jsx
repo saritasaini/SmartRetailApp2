@@ -81,7 +81,7 @@ export default function InvoiceModal({ order, profile, onClose }) {
                 <div className="flex flex-col md:flex-row md:justify-end md:items-center gap-1 md:gap-3 col-span-2 md:col-span-1">
                   <span className="text-gray-400 text-xs uppercase tracking-wider font-bold">Payment Mode</span>
                   <span className="font-bold text-gray-800 bg-white md:bg-transparent px-2 py-1 md:p-0 rounded border border-gray-100 md:border-none">
-                    {order.payment_method === 'cod' ? 'Cash on Delivery' : order.payment_method === 'upi' ? 'Online (UPI)' : 'Pay Later (Khata)'}
+                    {order.payment_method === 'cod' ? 'Cash on Delivery' : order.payment_method === 'upi' ? 'Online (UPI)' : 'Pay Later'}
                   </span>
                 </div>
               </div>
